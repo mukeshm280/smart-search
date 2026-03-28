@@ -3,6 +3,10 @@
 Framework agnostic smart search web component
 A reusable, customizable search component with advanced filtering and keyboard navigation.
 
+## Live Demo
+
+Try with live demo: https://mukeshm280.github.io/smart-search/
+
 ## Features
 
 - **Framework Agnostic**: Works with any JavaScript framework (React, Vue, Angular) or vanilla HTML.

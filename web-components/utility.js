@@ -1,3 +1,6 @@
+/**
+ * Utility function to create a boolean filter element.
+ */
 export function createBooleanFilter(filter) {
   const el = document.createElement("div");
   el.className = "boolean-filter";
@@ -40,6 +43,9 @@ export function createBooleanFilter(filter) {
   return el;
 }
 
+/**
+ * Utility function to create a select filter element.
+ */
 export function createSelectFilter(filter) {
   const el = document.createElement("select");
   el.innerHTML = `
@@ -65,12 +71,18 @@ export function createSelectFilter(filter) {
   return el;
 }
 
+/**
+ * Highlights a term within a text string.
+ */
 export function highlight(text, term) {
   if (!term) return text;
   const regex = new RegExp(`(${term})`, "gi");
   return text.replace(regex, `<span class="highlight-term">$1</span>`);
 }
 
+/**
+ * Functions for filtering logic. Can be extended with more operators as needed.
+ */
 export const OPERATORS = {
   equals: (itemVal, filterVal) => itemVal === filterVal,
 
@@ -79,7 +91,7 @@ export const OPERATORS = {
 };
 
 /**
- * Core filtering logic moved to utility for pure data transformation.
+ * Applies active filters to a list of items based on filter configurations.
  */
 export function applyFilters(items, activeFilters, filterConfigs) {
   const activeFilterKeys = Object.keys(activeFilters);
