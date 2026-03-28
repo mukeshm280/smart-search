@@ -7,6 +7,16 @@ A reusable, customizable search component with advanced filtering and keyboard n
 
 Try with live demo: https://mukeshm280.github.io/smart-search/
 
+**Laptop Screen:**
+
+<img width="3195" height="1785" alt="image" src="https://github.com/user-attachments/assets/e41e0bf8-12c2-47d2-b88e-abb7fba414a5" />
+
+**Mobile Screen:**
+
+<img width="1313" height="1578" alt="image" src="https://github.com/user-attachments/assets/8e427eee-e310-467f-99c3-9f50427d53ef" />
+
+
+
 ## Features
 
 - **Framework Agnostic**: Works with any JavaScript framework (React, Vue, Angular) or vanilla HTML.
