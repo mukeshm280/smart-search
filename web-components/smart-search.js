@@ -1,5 +1,4 @@
 import {
-  OPERATORS,
   applyFilters,
   createBooleanFilter,
   createSelectFilter,
@@ -23,8 +22,8 @@ class SmartSearch extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" }); // Enable Shadow DOM for style encapsulation
 
-    this.data = []; // to hold active search results
     this.searchResults = []; // to hold the full set of search results before filtering
+    this.filteredResults = []; // to hold the results currently visible in the dropdown after filtering
     this.selectedIndex = -1;
     this.isOpen = false;
     this.activeFilters = {}; // Track all active filters
@@ -59,15 +58,17 @@ class SmartSearch extends HTMLElement {
 
   /**
    * Called when an observed attribute changes.
-   * @param {string} name
-   * @param {string} oldValue
-   * @param {string} newValue
    */
   attributeChangedCallback(name, oldValue, newValue) {
+    if (oldValue === newValue) return;
+
     if (name === "config" && newValue) {
-      this.config = JSON.parse(newValue);
-      console.log("Parsed config:", this.config);
-      // this.initFilters();
+      this.config = { ...this.config, ...JSON.parse(newValue) };
+      if (this.shadowRoot.innerHTML !== "") this.initFilters();
+    }
+
+    if (name === "theme" && this.shadowRoot.innerHTML !== "") {
+      this.render(); // Re-render to update CSS variables
     }
   }
 
@@ -286,7 +287,7 @@ class SmartSearch extends HTMLElement {
     const clearBtn = this.shadowRoot.getElementById("clearBtn");
     const loader = this.shadowRoot.getElementById("loader");
 
-    const signal = this.eventController.signal;
+    const signal = this.eventController.signal; // to manage all event listeners with a single AbortController for easy cleanup
 
     // ---- Handlers ----
     this.handlers = {
@@ -331,7 +332,7 @@ class SmartSearch extends HTMLElement {
           this.updateActiveItem(items);
         } else if (e.key === "Enter") {
           if (this.selectedIndex >= 0)
-            this.selectItem(this.data[this.selectedIndex]);
+            this.selectItem(this.filteredResults[this.selectedIndex]);
         } else if (e.key === "Escape") {
           this.close();
         }
@@ -426,7 +427,7 @@ class SmartSearch extends HTMLElement {
     if (loader) loader.classList.remove("visible");
 
     if (!internalFilter) this.searchResults = results;
-    this.data = results;
+    this.filteredResults = results;
     this.selectedIndex = -1;
     const list = this.shadowRoot.getElementById("resultsList");
     const clearBtn = this.shadowRoot.getElementById("clearBtn");
@@ -468,7 +469,7 @@ class SmartSearch extends HTMLElement {
       el.addEventListener(
         "click",
         () => {
-          const item = this.data[el.dataset.index];
+          const item = this.filteredResults[el.dataset.index];
           if (item) this.selectItem(item);
         },
         { signal },
@@ -480,10 +481,7 @@ class SmartSearch extends HTMLElement {
     items.forEach((item, idx) => {
       item.classList.toggle("active", idx === this.selectedIndex);
       if (idx === this.selectedIndex) {
-        item.scrollIntoView({ block: "nearest" });
-        this.shadowRoot
-          .getElementById("searchInput")
-          .setAttribute("aria-activedescendant", `item-${idx}`);
+        item.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
     });
   }
@@ -517,32 +515,6 @@ class SmartSearch extends HTMLElement {
       .setAttribute("aria-expanded", "false");
   }
 
-  filterData(key, value) {
-    // Implementation for filtering data based on key-value pairs
-    // If value is empty string, show all results (no filter applied)
-    if (key === "" || value === null || value === undefined) {
-      this.updateResults(
-        this.searchResults,
-        this.shadowRoot.getElementById("searchInput").value,
-        true,
-      );
-      return;
-    }
-
-    const filtedData = this.searchResults.filter((item) => {
-      const itemVal = item[key];
-      const operatorName =
-        this.config.filters.find((f) => f.key === key)?.operator || "equals";
-      const operatorFunc = OPERATORS[operatorName];
-      return operatorFunc(itemVal, value);
-    });
-    this.updateResults(
-      filtedData,
-      this.shadowRoot.getElementById("searchInput").value,
-      true,
-    );
-  }
-
   updateFilterState(key, value) {
     // Update the active filters state
     if (value === null) {
@@ -554,6 +526,9 @@ class SmartSearch extends HTMLElement {
     this.applyAllFilters();
   }
 
+  /**
+   * Applies all active filters to the current search results and updates the displayed results accordingly.
+   */
   applyAllFilters() {
     const filteredData = applyFilters(
       this.searchResults,
@@ -572,8 +547,6 @@ class SmartSearch extends HTMLElement {
    * Utility method to dispatch custom events to the parent application.
    * @param {string} eventName - The name of the event to dispatch.
    * @param {object} detail - The data to include in the event's detail property.
-   * This allows the parent application to listen for specific events and receive relevant data when they occur,
-   * enabling flexible integration and communication between the component and its host environment.
    */
   notifyParent(eventName, detail) {
     this.dispatchEvent(new CustomEvent(eventName, { detail }));

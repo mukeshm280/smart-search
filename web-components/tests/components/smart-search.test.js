@@ -144,10 +144,10 @@ describe("Smart Search web component test", () => {
       el.searchResults = [{ category: "A" }, { category: "B" }];
       el.activeFilters = {};
       el.updateResults(el.searchResults, "");
-      expect(el.data.length).toBe(2);
+      expect(el.filteredResults.length).toBe(2);
 
       el.updateFilterState("category", "A");
-      expect(el.data.length).toBe(1);
+      expect(el.filteredResults.length).toBe(1);
     });
 
     test("should reset filters clears all filters", () => {

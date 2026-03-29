@@ -1,3 +1,15 @@
+// utility functions for smart-search component
+
+/**
+ * Functions for filtering logic. Can be extended with more operators as needed.
+ */
+export const OPERATORS = {
+  equals: (itemVal, filterVal) => itemVal === filterVal,
+
+  includes: (itemVal, filterVal) =>
+    String(itemVal).toLowerCase().includes(filterVal.toLowerCase()),
+};
+
 /**
  * Utility function to create a boolean filter element.
  */
@@ -79,16 +91,6 @@ export function highlight(text, term) {
   const regex = new RegExp(`(${term})`, "gi");
   return text.replace(regex, `<span class="highlight-term">$1</span>`);
 }
-
-/**
- * Functions for filtering logic. Can be extended with more operators as needed.
- */
-export const OPERATORS = {
-  equals: (itemVal, filterVal) => itemVal === filterVal,
-
-  includes: (itemVal, filterVal) =>
-    String(itemVal).toLowerCase().includes(filterVal.toLowerCase()),
-};
 
 /**
  * Applies active filters to a list of items based on filter configurations.
