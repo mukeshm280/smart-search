@@ -5,10 +5,6 @@ import {
   highlight,
 } from "./utility.js";
 
-/**
- * TEMPLATE DEFINITION
- * Defined outside the class so it is parsed once by the browser.
- */
 const template = document.createElement("template");
 template.innerHTML = `
   <style>
@@ -18,18 +14,19 @@ template.innerHTML = `
         --border: #dcdfe6;
         --hover: #f5f7fa;
         --highlight: #0066cc;
+        --subtext: #7f8c8d;
         display: block;
         position: relative;
         width: 100%;
         font-family: system-ui, -apple-system, sans-serif;
     }
 
-    /* Theme switching via attribute selector */
     :host([theme="dark"]) {
         --bg: #2c3e50;
         --text: #ecf0f1;
         --border: #455a64;
         --hover: #34495e;
+        --subtext: #bdc3c7;
     }
 
     .sr-only {
@@ -50,23 +47,28 @@ template.innerHTML = `
         font-size: 16px; border: 2px solid var(--border);
         border-radius: 8px; background: var(--bg);
         color: var(--text); box-sizing: border-box;
-        outline: none; transition: border-color 0.2s;
+        outline: none; transition: border-color 0.2s, box-shadow 0.2s;
     }
 
-    input:focus { border-color: var(--highlight); box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.2); }
+    input:focus { 
+        border-color: var(--highlight); 
+        box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.2); 
+    }
 
     #clearBtn {
-        position: absolute; right: 12px; top: 42px;
+        position: absolute; right: 12px; top: 41px;
         background: #bdc3c7; color: white; border: none;
         border-radius: 50%; width: 24px; height: 24px;
         cursor: pointer; display: none; align-items: center;
-        justify-content: center; font-size: 18px;
+        justify-content: center; font-size: 18px; line-height: 1;
+        transition: background 0.2s;
     }
 
     #clearBtn.visible { display: flex; }
+    #clearBtn:hover { background: #95a5a6; }
 
     .loader {
-        position: absolute; right: 42px; top: 47px;
+        position: absolute; right: 42px; top: 46px;
         width: 14px; height: 14px;
         border: 2px solid var(--border);
         border-top: 2px solid var(--highlight);
@@ -76,6 +78,43 @@ template.innerHTML = `
     .loader.visible { display: block; }
 
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    .filters { 
+        margin-top: 12px;
+        display: none; 
+        gap: 16px; 
+        flex-wrap: wrap; 
+        align-items: center;
+        background: var(--hover);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 14px;
+        box-sizing: border-box;
+    }
+
+    .filters.visible { display: flex; animation: fadeIn 0.2s ease-out; }
+
+    .filter-item { display: flex; align-items: center; gap: 8px; }
+    
+    .filter-item label {
+        font-size: 13px; font-weight: 600;
+        color: var(--text); white-space: nowrap;
+    }
+
+    .filter-item select {
+        padding: 6px 10px; font-size: 13px;
+        border: 1px solid var(--border); border-radius: 4px;
+        background: var(--bg); color: var(--text);
+        cursor: pointer; outline: none;
+    }
+
+    .reset-filters-btn {
+        margin-left: auto;
+        font-size: 12px; color: var(--highlight);
+        background: none; border: none;
+        padding: 4px 8px; cursor: pointer;
+        font-weight: 600; text-decoration: underline;
+    }
 
     .dropdown {
         position: absolute; top: calc(100% + 5px);
@@ -87,24 +126,28 @@ template.innerHTML = `
     }
     .dropdown.open { display: block; }
 
-    .filters { 
-        margin-top: 8px; display: none; gap: 12px; 
-        flex-wrap: wrap; align-items: center;
-        background: var(--hover); border-radius: 6px; padding: 10px;
-    }
-    .filters.visible { display: flex; }
-
     .item {
         padding: 12px 15px; cursor: pointer;
         display: flex; flex-direction: column;
         border-bottom: 1px solid var(--border);
+        transition: background 0.2s;
     }
-    .item.active { background: var(--hover); border-left: 4px solid var(--highlight); }
+    .item:last-child { border-bottom: none; }
+    .item.active, .item:hover { background: var(--hover); }
+    .item.active { border-left: 4px solid var(--highlight); }
+
     .item-label { font-weight: 600; font-size: 14px; color: var(--text); }
-    .item-sub { font-size: 12px; color: #7f8c8d; margin-top: 4px; }
+    .item-sub { font-size: 12px; color: var(--subtext); margin-top: 4px; }
+    
+    .highlight-term { color: var(--highlight); font-weight: bold; text-decoration: underline; }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-5px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 
-  <div class="search-wrapper" role="none">
+  <div class="search-wrapper">
       <label id="searchLabel" for="searchInput" class="search-label"></label>
       <input type="text" 
              id="searchInput" 
@@ -115,12 +158,14 @@ template.innerHTML = `
              aria-haspopup="listbox"
              aria-controls="resultsList">
       
-      <div id="status" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+      <div id="status" class="sr-only" aria-live="polite"></div>
       
-      <button id="clearBtn" aria-label="Clear search">×</button>
-      <div id="loader" class="loader" role="status" aria-label="Loading"></div>
+      <button id="clearBtn" aria-label="Clear search">
+        <span aria-hidden="true">×</span>
+      </button>
+      <div id="loader" class="loader" role="status" aria-label="Loading results"></div>
       
-      <div class="filters" role="group" aria-label="Search filters"></div>
+      <div id="filterBar" class="filters" role="region" aria-label="Search filters"></div>
       
       <div id="resultsList" 
            class="dropdown" 
@@ -129,16 +174,12 @@ template.innerHTML = `
   </div>
 `;
 
-/**
- * COMPONENT CLASS
- */
 class SmartSearch extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
     this.shadowRoot.appendChild(template.content.cloneNode(true));
 
-    // Internal State
     this.searchResults = [];
     this.filteredResults = [];
     this.selectedIndex = -1;
@@ -147,10 +188,7 @@ class SmartSearch extends HTMLElement {
     this.debounceTimer = null;
     this.eventController = new AbortController();
     
-    this.config = {
-      placeholder: "Search...",
-      filters: [],
-    };
+    this.config = { placeholder: "Search...", filters: [] };
   }
 
   static get observedAttributes() {
@@ -170,19 +208,14 @@ class SmartSearch extends HTMLElement {
       try {
         this.config = { ...this.config, ...JSON.parse(newValue) };
         this.initFilters();
-      } catch (e) { console.error("Config parse error", e); }
+      } catch (e) { console.error("SmartSearch: Config error", e); }
     }
-
     this.updateStaticContent();
   }
 
-  /**
-   * Updates attributes like labels and placeholders without re-rendering HTML
-   */
   updateStaticContent() {
     const input = this.shadowRoot.getElementById("searchInput");
     const label = this.shadowRoot.getElementById("searchLabel");
-    
     if (input) input.placeholder = this.getAttribute("placeholder") || "Search...";
     if (label) label.textContent = this.getAttribute("label") || "Search";
   }
@@ -204,7 +237,6 @@ class SmartSearch extends HTMLElement {
   handleInput(e) {
     const val = e.target.value;
     const loader = this.shadowRoot.getElementById("loader");
-    
     if (val.length > 0) loader.classList.add("visible");
     
     clearTimeout(this.debounceTimer);
@@ -217,7 +249,7 @@ class SmartSearch extends HTMLElement {
   handleKeyDown(e) {
     const items = this.shadowRoot.querySelectorAll('.item[role="option"]');
     
-    if (!this.isOpen && items.length > 0 && e.key === "ArrowDown") {
+    if (!this.isOpen && items.length > 0 && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
         this.open();
         return;
     }
@@ -233,6 +265,20 @@ class SmartSearch extends HTMLElement {
         this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
         this.updateActiveItem(items);
         break;
+      case "Home":
+        if (this.isOpen) {
+            e.preventDefault();
+            this.selectedIndex = 0;
+            this.updateActiveItem(items);
+        }
+        break;
+      case "End":
+        if (this.isOpen) {
+            e.preventDefault();
+            this.selectedIndex = items.length - 1;
+            this.updateActiveItem(items);
+        }
+        break;
       case "Enter":
         if (this.selectedIndex >= 0) {
           e.preventDefault();
@@ -240,6 +286,10 @@ class SmartSearch extends HTMLElement {
         }
         break;
       case "Escape":
+        this.close();
+        this.shadowRoot.getElementById("searchInput").focus();
+        break;
+      case "Tab":
         this.close();
         break;
     }
@@ -250,20 +300,20 @@ class SmartSearch extends HTMLElement {
     input.value = "";
     this.selectedIndex = -1;
     this.shadowRoot.getElementById("clearBtn").classList.remove("visible");
-    this.shadowRoot.getElementById("status").textContent = "Search cleared";
+    this.announceStatus("Search cleared");
     this.close();
     input.focus();
     this.notifyParent("search-input", { value: "" });
   }
 
   initFilters() {
-    const container = this.shadowRoot.querySelector(".filters");
-    if (!this.config.filters || !this.config.filters.length) {
+    const container = this.shadowRoot.getElementById("filterBar");
+    if (!this.config.filters?.length) {
         container.classList.remove("visible");
         return;
     }
 
-    container.innerHTML = `<span style="font-size: 12px; color: var(--text); font-weight:bold;">Filters:</span>`;
+    container.innerHTML = `<span style="font-size: 13px; color: var(--text); font-weight:bold;" aria-hidden="true">Filters:</span>`;
 
     this.config.filters.forEach((filter) => {
       const wrapper = document.createElement("div");
@@ -273,7 +323,6 @@ class SmartSearch extends HTMLElement {
       const id = `f-${filter.key}`;
       label.textContent = filter.label || filter.key;
       label.setAttribute("for", id);
-      label.style.fontSize = "12px";
       wrapper.appendChild(label);
 
       let el;
@@ -288,15 +337,19 @@ class SmartSearch extends HTMLElement {
     });
 
     const resetBtn = document.createElement("button");
-    resetBtn.textContent = "Reset";
-    resetBtn.className = "item-sub";
-    resetBtn.style.cssText = "background:none; border:none; cursor:pointer; text-decoration:underline; color:var(--highlight);";
+    resetBtn.textContent = "Reset All";
+    resetBtn.className = "reset-filters-btn";
+    resetBtn.setAttribute("aria-label", "Reset all filters");
     resetBtn.onclick = () => this.resetFilters();
     container.appendChild(resetBtn);
   }
 
-  updateResults(results, query, internalFilter = false) {
+  announceStatus(msg) {
     const status = this.shadowRoot.getElementById("status");
+    status.textContent = msg;
+  }
+
+  updateResults(results, query, internalFilter = false) {
     const list = this.shadowRoot.getElementById("resultsList");
     this.shadowRoot.getElementById("loader").classList.remove("visible");
 
@@ -304,16 +357,16 @@ class SmartSearch extends HTMLElement {
     this.filteredResults = results;
     this.selectedIndex = -1;
 
-    // Accessibility Announcement
     if (query) {
-        status.textContent = results.length > 0 
-            ? `${results.length} results available.` 
+        const countMsg = results.length > 0 
+            ? `${results.length} results found. Use up and down arrows to navigate.` 
             : "No results found.";
+        this.announceStatus(countMsg);
     }
 
     if (!results.length) {
       if (!query) { this.close(); return; }
-      list.innerHTML = `<div class="item" role="option" style="text-align:center;">No results found</div>`;
+      list.innerHTML = `<div class="item" role="option" aria-disabled="true" style="text-align:center; color:var(--subtext);">No results found</div>`;
       this.open();
       return;
     }
@@ -328,10 +381,10 @@ class SmartSearch extends HTMLElement {
     this.open();
 
     list.querySelectorAll(".item").forEach((el) => {
-      el.addEventListener("click", () => {
+      el.onclick = () => {
         const item = this.filteredResults[el.dataset.index];
         if (item) this.selectItem(item);
-      }, { signal: this.eventController.signal });
+      };
     });
   }
 
@@ -351,15 +404,16 @@ class SmartSearch extends HTMLElement {
   selectItem(item) {
     const input = this.shadowRoot.getElementById("searchInput");
     input.value = item.label;
-    this.shadowRoot.getElementById("status").textContent = `Selected ${item.label}`;
+    this.announceStatus(`Selected: ${item.label}`);
     this.notifyParent("search-select", { item });
     this.close();
+    input.focus();
   }
 
   open() {
     this.isOpen = true;
     this.shadowRoot.getElementById("resultsList").classList.add("open");
-    if (this.config.filters.length) this.shadowRoot.querySelector(".filters").classList.add("visible");
+    if (this.config.filters?.length) this.shadowRoot.getElementById("filterBar").classList.add("visible");
     this.shadowRoot.getElementById("searchInput").setAttribute("aria-expanded", "true");
   }
 
@@ -367,7 +421,7 @@ class SmartSearch extends HTMLElement {
     this.isOpen = false;
     this.selectedIndex = -1;
     this.shadowRoot.getElementById("resultsList").classList.remove("open");
-    this.shadowRoot.querySelector(".filters").classList.remove("visible");
+    this.shadowRoot.getElementById("filterBar").classList.remove("visible");
     const input = this.shadowRoot.getElementById("searchInput");
     input.setAttribute("aria-expanded", "false");
     input.removeAttribute("aria-activedescendant");
@@ -377,6 +431,7 @@ class SmartSearch extends HTMLElement {
     this.activeFilters = {};
     this.initFilters();
     this.applyAllFilters();
+    this.announceStatus("Filters reset");
   }
 
   updateFilterState(key, value) {
@@ -391,7 +446,11 @@ class SmartSearch extends HTMLElement {
   }
 
   notifyParent(eventName, detail) {
-    this.dispatchEvent(new CustomEvent(eventName, { detail, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent(eventName, { 
+        detail, 
+        bubbles: true, 
+        composed: true 
+    }));
   }
 
   disconnectedCallback() {
