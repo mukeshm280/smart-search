@@ -6,481 +6,343 @@ import {
 } from "./utility.js";
 
 /**
- * SmartSearch Web Component
- * A reusable,framework agnostic, customizable search component with advanced filtering capabilities.
- * Features:
- * - Flexible data handling with support for various data structures and dynamic updates
- * - Advanced filtering with multiple filter types (select, boolean, range) and combinable filters
- * - Search term highlighting in results for better visibility
- * - Keyboard navigation support for accessibility and improved user experience
- * - Click-outside dismissal for intuitive interaction
- * - Style isolation using Shadow DOM and support for light/dark themes
- * - Custom events to communicate with parent applications and allow for flexible integration
+ * TEMPLATE DEFINITION
+ * Defined outside the class so it is parsed once by the browser.
+ */
+const template = document.createElement("template");
+template.innerHTML = `
+  <style>
+    :host {
+        --bg: #ffffff;
+        --text: #333333;
+        --border: #dcdfe6;
+        --hover: #f5f7fa;
+        --highlight: #0066cc;
+        display: block;
+        position: relative;
+        width: 100%;
+        font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    /* Theme switching via attribute selector */
+    :host([theme="dark"]) {
+        --bg: #2c3e50;
+        --text: #ecf0f1;
+        --border: #455a64;
+        --hover: #34495e;
+    }
+
+    .sr-only {
+        position: absolute;
+        width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;
+    }
+
+    .search-wrapper { position: relative; width: 100%; }
+    
+    .search-label {
+        font-size: 16px; font-weight: 600; display: block;
+        margin-bottom: 8px; color: var(--text);
+    }
+
+    input {
+        width: 100%; padding: 12px 65px 12px 15px;
+        font-size: 16px; border: 2px solid var(--border);
+        border-radius: 8px; background: var(--bg);
+        color: var(--text); box-sizing: border-box;
+        outline: none; transition: border-color 0.2s;
+    }
+
+    input:focus { border-color: var(--highlight); box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.2); }
+
+    #clearBtn {
+        position: absolute; right: 12px; top: 42px;
+        background: #bdc3c7; color: white; border: none;
+        border-radius: 50%; width: 24px; height: 24px;
+        cursor: pointer; display: none; align-items: center;
+        justify-content: center; font-size: 18px;
+    }
+
+    #clearBtn.visible { display: flex; }
+
+    .loader {
+        position: absolute; right: 42px; top: 47px;
+        width: 14px; height: 14px;
+        border: 2px solid var(--border);
+        border-top: 2px solid var(--highlight);
+        border-radius: 50%; animation: spin 0.8s linear infinite;
+        display: none;
+    }
+    .loader.visible { display: block; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .dropdown {
+        position: absolute; top: calc(100% + 5px);
+        left: 0; right: 0; background: var(--bg);
+        border: 1px solid var(--border); border-radius: 8px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        max-height: 300px; overflow-y: auto;
+        display: none; z-index: 100;
+    }
+    .dropdown.open { display: block; }
+
+    .filters { 
+        margin-top: 8px; display: none; gap: 12px; 
+        flex-wrap: wrap; align-items: center;
+        background: var(--hover); border-radius: 6px; padding: 10px;
+    }
+    .filters.visible { display: flex; }
+
+    .item {
+        padding: 12px 15px; cursor: pointer;
+        display: flex; flex-direction: column;
+        border-bottom: 1px solid var(--border);
+    }
+    .item.active { background: var(--hover); border-left: 4px solid var(--highlight); }
+    .item-label { font-weight: 600; font-size: 14px; color: var(--text); }
+    .item-sub { font-size: 12px; color: #7f8c8d; margin-top: 4px; }
+  </style>
+
+  <div class="search-wrapper" role="none">
+      <label id="searchLabel" for="searchInput" class="search-label"></label>
+      <input type="text" 
+             id="searchInput" 
+             autocomplete="off" 
+             role="combobox" 
+             aria-autocomplete="list" 
+             aria-expanded="false" 
+             aria-haspopup="listbox"
+             aria-controls="resultsList">
+      
+      <div id="status" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+      
+      <button id="clearBtn" aria-label="Clear search">×</button>
+      <div id="loader" class="loader" role="status" aria-label="Loading"></div>
+      
+      <div class="filters" role="group" aria-label="Search filters"></div>
+      
+      <div id="resultsList" 
+           class="dropdown" 
+           role="listbox" 
+           aria-labelledby="searchLabel"></div>
+  </div>
+`;
+
+/**
+ * COMPONENT CLASS
  */
 class SmartSearch extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: "open" }); // Enable Shadow DOM for style encapsulation
+    this.attachShadow({ mode: "open" });
+    this.shadowRoot.appendChild(template.content.cloneNode(true));
 
-    this.searchResults = []; // to hold the full set of search results before filtering
-    this.filteredResults = []; // to hold the results currently visible in the dropdown after filtering
+    // Internal State
+    this.searchResults = [];
+    this.filteredResults = [];
     this.selectedIndex = -1;
     this.isOpen = false;
-    this.activeFilters = {}; // Track all active filters
-    this.debounceTimer = null; // For input debouncing
+    this.activeFilters = {};
+    this.debounceTimer = null;
     this.eventController = new AbortController();
-    this.handlers = {}; // Store event handlers for cleanup
+    
     this.config = {
       placeholder: "Search...",
-      dataSource: [],
       filters: [],
     };
   }
 
-  /**
-   * Lifecycle method called when the component is added to the DOM.
-   * Initializes the component by rendering the UI,
-   * setting up event listeners,
-   * and initializing filters based on the provided configuration.
-   */
+  static get observedAttributes() {
+    return ["placeholder", "label", "config", "theme"];
+  }
+
   connectedCallback() {
-    this.render();
+    this.updateStaticContent();
     this.setupEventListeners();
     this.initFilters();
   }
 
-  /**
-   * Observed attributes for the component.
-   */
-  static get observedAttributes() {
-    return ["placeholder", "theme", "config"];
-  }
-
-  /**
-   * Called when an observed attribute changes.
-   */
   attributeChangedCallback(name, oldValue, newValue) {
     if (oldValue === newValue) return;
-
+    
     if (name === "config" && newValue) {
-      this.config = { ...this.config, ...JSON.parse(newValue) };
-      if (this.shadowRoot.innerHTML !== "") this.initFilters();
+      try {
+        this.config = { ...this.config, ...JSON.parse(newValue) };
+        this.initFilters();
+      } catch (e) { console.error("Config parse error", e); }
     }
 
-    if (name === "theme" && this.shadowRoot.innerHTML !== "") {
-      this.render(); // Re-render to update CSS variables
-    }
+    this.updateStaticContent();
   }
 
-  //  Style isolation and custom theming support
-  render() {
-    const theme = this.getAttribute("theme") || "light";
-    const isDark = theme === "dark";
-
-    this.shadowRoot.innerHTML = `
-        <style>
-            :host {
-                --bg: ${isDark ? "#2c3e50" : "#ffffff"};
-                --text: ${isDark ? "#ecf0f1" : "#333333"};
-                --border: ${isDark ? "#455a64" : "#dcdfe6"};
-                --hover: ${isDark ? "#34495e" : "#f5f7fa"};
-                --highlight: #0066cc;
-                display: block;
-                position: relative;
-                width: 100%;
-            }
-
-            .search-wrapper { position: relative; width: 100%; }
-
-            input {
-                width: 100%;
-                padding: 12px 65px 12px 15px;
-                font-size: 16px;
-                border: 2px solid var(--border);
-                border-radius: 8px;
-                background: var(--bg);
-                color: var(--text);
-                box-sizing: border-box;
-                transition: border-color 0.2s;
-                outline: none;
-            }
-
-            input:focus { border-color: var(--highlight); }
-
-            /* Clear Button Styles */
-            #clearBtn {
-                position: absolute;
-                right: 12px;
-                top: 45px;
-                background: #bdc3c7;
-                color: white;
-                border: none;
-                border-radius: 50%;
-                width: 20px;
-                height: 20px;
-                cursor: pointer;
-                display: none; /* Hidden by default */
-                align-items: center;
-                justify-content: center;
-                transition: background 0.2s;
-            }
-
-            #clearBtn.visible { display: flex; }
-            #clearBtn:hover { background: #95a5a6; }
-
-            /* Loader Styles */
-            .loader {
-                position: absolute;
-                right: 38px;
-                top: 47px;
-                width: 14px;
-                height: 14px;
-                border: 2px solid var(--border);
-                border-top: 2px solid var(--highlight);
-                border-radius: 50%;
-                animation: spin 0.8s linear infinite;
-                display: none;
-                pointer-events: none;
-            }
-            .loader.visible { display: block; }
-
-            @keyframes spin {
-                to { transform: rotate(360deg); }
-            }
-
-            /* Overlay Management */
-            .dropdown {
-                position: absolute;
-                top: calc(100% + 5px);
-                left: 0;
-                right: 0;
-                background: var(--bg);
-                border: 1px solid var(--border);
-                border-radius: 8px;
-                box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-                max-height: 300px;
-                overflow-y: auto;
-                display: none;
-                z-index: 1;
-            }
-
-            .dropdown.open { display: block; }
-
-            .filters { 
-                margin-top: 8px; 
-                display: none; 
-                gap: 8px; 
-                flex-wrap: wrap; 
-                align-items: center;
-                background: var(--bg);
-                border: 1px solid var(--border);
-                border-radius: 6px;
-                padding: 6px;
-            }
-            .filters.visible { display: flex; }
-            
-            /* Filter Item Styling */
-            .filter-item {
-                display: flex;
-                align-items: center;
-                gap: 4px;
-                background: inherit;
-            }
-            
-            .filter-item label {
-                font-size: 12px;
-                color: var(--text);
-                font-weight: 500;
-                white-space: nowrap;
-            }
-            
-            .filter-item select {
-                padding: 6px 8px;
-                font-size: 12px;
-                border: 1px solid var(--border);
-                border-radius: 4px;
-                background: var(--bg);
-                color: var(--text);
-                cursor: pointer;
-                min-width: 80px;
-                transition: border-color 0.2s, box-shadow 0.2s;
-                outline: none;
-            }
-            
-            .filter-item select:focus {
-                border-color: var(--highlight);
-                box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.1);
-            }
-            
-            .filter-item select:hover {
-                border-color: var(--highlight);
-            }
-
-            .reset-filters-link {
-                font-size: 12px;
-                color: var(--highlight);
-                margin-left: auto;
-                text-decoration: underline;
-                cursor: pointer;
-            }
-            .option-boolean-label {
-              display: flex;
-              align-items: center;
-              gap: 6px;
-              font-size: 12px;
-              color: var(--text);
-            }
-            
-            .boolean-filter {
-              display: flex;
-            }
-            
-            .item {
-                padding: 10px 15px;
-                cursor: pointer;
-                display: flex;
-                flex-direction: column;
-                border-bottom: 1px solid var(--border);
-            }
-            .search-label {
-                font-size: 20px;
-                display: block;
-                margin-bottom: 8px;
-            }  
-            
-
-            .item:last-child { border-bottom: none; }
-            .item:hover, .item.active { background: var(--hover); }
-            
-            .item-label { font-weight: 600; font-size: 14px; color: var(--text); }
-            .item-sub { font-size: 12px; color: #7f8c8d; margin-top: 2px; }
-
-            .highlight-term { color: var(--highlight); text-decoration: underline; }
-
-            /* Mobile Responsive */
-            @media (max-width: 480px) {
-                input { font-size: 18px; padding: 15px; }
-            }
-        </style>
-        <div class="search-wrapper">
-            <label for="searchInput" class="search-label">${this.getAttribute("label") || "Search"}</label>
-            <input type="text" 
-                   id="searchInput" 
-                   placeholder="${this.getAttribute("placeholder") || "Search..."}"
-                   autocomplete="off"
-                   role="combobox"
-                   aria-autocomplete="list"
-                   aria-expanded="false"
-                   aria-haspopup="listbox">
-            <button id="clearBtn" aria-label="Clear search" title="Clear">×</button>
-            <div id="loader" class="loader"></div>
-            <div class="filters">
-               <span style="font-size: 12px; color: var(--text); margin-right: 8px;">Filters:</span>
-            </div>
-            <div id="resultsList" class="dropdown" role="listbox"></div>
-        </div>
-        `;
+  /**
+   * Updates attributes like labels and placeholders without re-rendering HTML
+   */
+  updateStaticContent() {
+    const input = this.shadowRoot.getElementById("searchInput");
+    const label = this.shadowRoot.getElementById("searchLabel");
+    
+    if (input) input.placeholder = this.getAttribute("placeholder") || "Search...";
+    if (label) label.textContent = this.getAttribute("label") || "Search";
   }
 
   setupEventListeners() {
     const input = this.shadowRoot.getElementById("searchInput");
     const clearBtn = this.shadowRoot.getElementById("clearBtn");
-    const loader = this.shadowRoot.getElementById("loader");
+    const { signal } = this.eventController;
 
-    const signal = this.eventController.signal; // to manage all event listeners with a single AbortController for easy cleanup
-
-    // ---- Handlers ----
-    this.handlers = {
-      onInput: (e) => {
-        clearTimeout(this.debounceTimer);
-        const val = e.target.value;
-
-        // Show loader immediately if there is text
-        if (val.length > 0) loader.classList.add("visible");
-        else loader.classList.remove("visible");
-
-        this.debounceTimer = setTimeout(() => {
-          clearBtn.classList.toggle("visible", val.length > 0);
-          this.notifyParent("search-input", { value: val });
-        }, 300);
-      },
-
-      onClear: () => {
-        clearTimeout(this.debounceTimer);
-        input.value = "";
-        this.selectedIndex = -1;
-        clearBtn.classList.remove("visible");
-        loader.classList.remove("visible");
-        this.close();
-        input.focus();
-        this.notifyParent("search-input", { value: "" });
-      },
-
-      onKeyDown: (e) => {
-        const items = this.shadowRoot.querySelectorAll(".item");
-
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          this.selectedIndex = Math.min(
-            this.selectedIndex + 1,
-            items.length - 1,
-          );
-          this.updateActiveItem(items);
-        } else if (e.key === "ArrowUp") {
-          e.preventDefault();
-          this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
-          this.updateActiveItem(items);
-        } else if (e.key === "Enter") {
-          if (this.selectedIndex >= 0)
-            this.selectItem(this.filteredResults[this.selectedIndex]);
-        } else if (e.key === "Escape") {
-          this.close();
-        }
-      },
-
-      onClickOutside: (e) => {
-        if (!this.contains(e.target)) this.close();
-      },
-    };
-
-    // ---- Bind using AbortController ----
-    input.addEventListener("input", this.handlers.onInput, { signal });
-    input.addEventListener("keydown", this.handlers.onKeyDown, { signal });
-    clearBtn.addEventListener("click", this.handlers.onClear, { signal });
-    document.addEventListener("click", this.handlers.onClickOutside, {
-      signal,
-    });
+    input.addEventListener("input", (e) => this.handleInput(e), { signal });
+    input.addEventListener("keydown", (e) => this.handleKeyDown(e), { signal });
+    clearBtn.addEventListener("click", () => this.handleClear(), { signal });
+    
+    document.addEventListener("click", (e) => {
+      if (!this.contains(e.composedPath()[0])) this.close();
+    }, { signal });
   }
 
-  // ---------- FILTER UI ----------
-  initFilters() {
-    if (!this.config.filters.length) return;
+  handleInput(e) {
+    const val = e.target.value;
+    const loader = this.shadowRoot.getElementById("loader");
+    
+    if (val.length > 0) loader.classList.add("visible");
+    
+    clearTimeout(this.debounceTimer);
+    this.debounceTimer = setTimeout(() => {
+      this.shadowRoot.getElementById("clearBtn").classList.toggle("visible", val.length > 0);
+      this.notifyParent("search-input", { value: val });
+    }, 300);
+  }
 
+  handleKeyDown(e) {
+    const items = this.shadowRoot.querySelectorAll('.item[role="option"]');
+    
+    if (!this.isOpen && items.length > 0 && e.key === "ArrowDown") {
+        this.open();
+        return;
+    }
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        this.selectedIndex = Math.min(this.selectedIndex + 1, items.length - 1);
+        this.updateActiveItem(items);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
+        this.updateActiveItem(items);
+        break;
+      case "Enter":
+        if (this.selectedIndex >= 0) {
+          e.preventDefault();
+          this.selectItem(this.filteredResults[this.selectedIndex]);
+        }
+        break;
+      case "Escape":
+        this.close();
+        break;
+    }
+  }
+
+  handleClear() {
+    const input = this.shadowRoot.getElementById("searchInput");
+    input.value = "";
+    this.selectedIndex = -1;
+    this.shadowRoot.getElementById("clearBtn").classList.remove("visible");
+    this.shadowRoot.getElementById("status").textContent = "Search cleared";
+    this.close();
+    input.focus();
+    this.notifyParent("search-input", { value: "" });
+  }
+
+  initFilters() {
     const container = this.shadowRoot.querySelector(".filters");
-    container.innerHTML = `<span style="font-size: 12px; color: var(--text); margin-right: 8px;">Filters:</span>`;
+    if (!this.config.filters || !this.config.filters.length) {
+        container.classList.remove("visible");
+        return;
+    }
+
+    container.innerHTML = `<span style="font-size: 12px; color: var(--text); font-weight:bold;">Filters:</span>`;
 
     this.config.filters.forEach((filter) => {
       const wrapper = document.createElement("div");
       wrapper.className = "filter-item";
-
+      
       const label = document.createElement("label");
+      const id = `f-${filter.key}`;
       label.textContent = filter.label || filter.key;
+      label.setAttribute("for", id);
       label.style.fontSize = "12px";
-      label.style.marginRight = "6px";
       wrapper.appendChild(label);
 
       let el;
-
-      if (filter.type === "select") {
-        el = createSelectFilter.call(this, filter);
-      } else if (filter.type === "boolean") {
-        el = createBooleanFilter.call(this, filter);
-      }
+      if (filter.type === "select") el = createSelectFilter.call(this, filter);
+      else if (filter.type === "boolean") el = createBooleanFilter.call(this, filter);
 
       if (el) {
+        el.id = id;
         wrapper.appendChild(el);
         container.appendChild(wrapper);
       }
     });
 
-    // add reset filters link
-    const resetLink = document.createElement("a");
-    resetLink.href = "#";
-    resetLink.textContent = "Reset filters";
-    resetLink.className = "reset-filters-link";
-    resetLink.addEventListener("click", (event) => {
-      event.preventDefault();
-      this.resetFilters();
-    });
-
-    const resetWrapper = document.createElement("div");
-    resetWrapper.style.marginLeft = "auto";
-    resetWrapper.style.marginRight = "8px";
-    resetWrapper.appendChild(resetLink);
-    container.appendChild(resetWrapper);
+    const resetBtn = document.createElement("button");
+    resetBtn.textContent = "Reset";
+    resetBtn.className = "item-sub";
+    resetBtn.style.cssText = "background:none; border:none; cursor:pointer; text-decoration:underline; color:var(--highlight);";
+    resetBtn.onclick = () => this.resetFilters();
+    container.appendChild(resetBtn);
   }
 
-  resetFilters() {
-    this.activeFilters = {};
-
-    // Reset every filter control to default state
-    const filterItems = this.shadowRoot.querySelectorAll(".filter-item");
-    filterItems.forEach((item) => {
-      const select = item.querySelector("select");
-      if (select) select.value = "";
-
-      const radios = item.querySelectorAll('input[type="radio"]');
-      if (radios && radios.length) {
-        radios.forEach((r) => {
-          r.checked = r.value === "all";
-        });
-      }
-    });
-
-    // Reapply no filters
-    this.applyAllFilters();
-  }
-
-  //  Handling flexible data structures
   updateResults(results, query, internalFilter = false) {
-    const loader = this.shadowRoot.getElementById("loader");
-    if (loader) loader.classList.remove("visible");
+    const status = this.shadowRoot.getElementById("status");
+    const list = this.shadowRoot.getElementById("resultsList");
+    this.shadowRoot.getElementById("loader").classList.remove("visible");
 
     if (!internalFilter) this.searchResults = results;
     this.filteredResults = results;
     this.selectedIndex = -1;
-    const list = this.shadowRoot.getElementById("resultsList");
-    const clearBtn = this.shadowRoot.getElementById("clearBtn");
 
-    // Ensure clear button visibility matches current input state
-    clearBtn.classList.toggle("visible", query.length > 0);
+    // Accessibility Announcement
+    if (query) {
+        status.textContent = results.length > 0 
+            ? `${results.length} results available.` 
+            : "No results found.";
+    }
 
     if (!results.length) {
-      // If search is empty (user cleared), close the dropdown
-      if (!query) {
-        this.close();
-        return;
-      }
-      // Otherwise show "No results found" message
-      list.innerHTML = `
-        <div class="item" style="text-align: center; color: var(--border); padding: 20px; cursor: default;"> 
-          <span class="item-label">No results found</span>
-        </div>
-      `;
+      if (!query) { this.close(); return; }
+      list.innerHTML = `<div class="item" role="option" style="text-align:center;">No results found</div>`;
       this.open();
       return;
     }
 
-    list.innerHTML = results
-      .map(
-        (item, idx) => `
-            <div class="item" data-index="${idx}" role="option">
-                <span class="item-label">${highlight.call(this, item.label, query)}</span>
-                <span class="item-sub">${item.category} • ${item.id} • ${item.active ? "Active" : "Inactive"}</span>
-            </div>
-        `,
-      )
-      .join("");
+    list.innerHTML = results.map((item, idx) => `
+        <div class="item" id="opt-${idx}" data-index="${idx}" role="option" aria-selected="false">
+            <span class="item-label">${highlight.call(this, item.label, query)}</span>
+            <span class="item-sub">${item.category} • ${item.active ? "Active" : "Inactive"}</span>
+        </div>
+    `).join("");
 
     this.open();
 
     list.querySelectorAll(".item").forEach((el) => {
-      const signal = this.eventController.signal;
-      el.addEventListener(
-        "click",
-        () => {
-          const item = this.filteredResults[el.dataset.index];
-          if (item) this.selectItem(item);
-        },
-        { signal },
-      );
+      el.addEventListener("click", () => {
+        const item = this.filteredResults[el.dataset.index];
+        if (item) this.selectItem(item);
+      }, { signal: this.eventController.signal });
     });
   }
 
   updateActiveItem(items) {
+    const input = this.shadowRoot.getElementById("searchInput");
     items.forEach((item, idx) => {
-      item.classList.toggle("active", idx === this.selectedIndex);
-      if (idx === this.selectedIndex) {
+      const isActive = idx === this.selectedIndex;
+      item.classList.toggle("active", isActive);
+      item.setAttribute("aria-selected", isActive);
+      if (isActive) {
+        input.setAttribute("aria-activedescendant", item.id);
         item.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
     });
@@ -488,10 +350,8 @@ class SmartSearch extends HTMLElement {
 
   selectItem(item) {
     const input = this.shadowRoot.getElementById("searchInput");
-    const clearBtn = this.shadowRoot.getElementById("clearBtn");
     input.value = item.label;
-    clearBtn.classList.add("visible");
-    //  Notify parent of selection
+    this.shadowRoot.getElementById("status").textContent = `Selected ${item.label}`;
     this.notifyParent("search-select", { item });
     this.close();
   }
@@ -499,67 +359,43 @@ class SmartSearch extends HTMLElement {
   open() {
     this.isOpen = true;
     this.shadowRoot.getElementById("resultsList").classList.add("open");
-    if (this.config.filters.length)
-      this.shadowRoot.querySelector(".filters").classList.add("visible");
-    this.shadowRoot
-      .getElementById("searchInput")
-      .setAttribute("aria-expanded", "true");
+    if (this.config.filters.length) this.shadowRoot.querySelector(".filters").classList.add("visible");
+    this.shadowRoot.getElementById("searchInput").setAttribute("aria-expanded", "true");
   }
 
   close() {
     this.isOpen = false;
+    this.selectedIndex = -1;
     this.shadowRoot.getElementById("resultsList").classList.remove("open");
     this.shadowRoot.querySelector(".filters").classList.remove("visible");
-    this.shadowRoot
-      .getElementById("searchInput")
-      .setAttribute("aria-expanded", "false");
+    const input = this.shadowRoot.getElementById("searchInput");
+    input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
   }
 
-  updateFilterState(key, value) {
-    // Update the active filters state
-    if (value === null) {
-      delete this.activeFilters[key];
-    } else {
-      this.activeFilters[key] = value;
-    }
-    // Apply all active filters
+  resetFilters() {
+    this.activeFilters = {};
+    this.initFilters();
     this.applyAllFilters();
   }
 
-  /**
-   * Applies all active filters to the current search results and updates the displayed results accordingly.
-   */
+  updateFilterState(key, value) {
+    if (value === null || value === "all" || value === "") delete this.activeFilters[key];
+    else this.activeFilters[key] = value;
+    this.applyAllFilters();
+  }
+
   applyAllFilters() {
-    const filteredData = applyFilters(
-      this.searchResults,
-      this.activeFilters,
-      this.config.filters,
-    );
-
-    this.updateResults(
-      filteredData,
-      this.shadowRoot.getElementById("searchInput").value,
-      true,
-    );
+    const filteredData = applyFilters(this.searchResults, this.activeFilters, this.config.filters);
+    this.updateResults(filteredData, this.shadowRoot.getElementById("searchInput").value, true);
   }
 
-  /**
-   * Utility method to dispatch custom events to the parent application.
-   * @param {string} eventName - The name of the event to dispatch.
-   * @param {object} detail - The data to include in the event's detail property.
-   */
   notifyParent(eventName, detail) {
-    this.dispatchEvent(new CustomEvent(eventName, { detail }));
+    this.dispatchEvent(new CustomEvent(eventName, { detail, bubbles: true, composed: true }));
   }
 
-  /**
-   * Lifecycle method called when the component is removed from the DOM.
-   * Cleans up event listeners and any asynchronous work to prevent memory leaks.
-   */
   disconnectedCallback() {
-    // removes ALL listeners
     this.eventController.abort();
-    // clear async work
     clearTimeout(this.debounceTimer);
   }
 }
